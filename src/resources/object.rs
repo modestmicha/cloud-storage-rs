@@ -236,6 +236,7 @@ impl Object {
     /// # Ok(())
     /// # }
     /// ```
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn create_streamed<S>(
         bucket: &str,
         stream: S,
@@ -282,7 +283,7 @@ impl Object {
     ///
     /// ### Features
     /// This function requires that the feature flag `sync` is enabled in `Cargo.toml`.
-    #[cfg(feature = "sync")]
+    #[cfg(all(feature = "sync", not(target_arch = "wasm32")))]
     #[tokio::main]
     pub async fn create_streamed_sync<R: std::io::Read + Send + 'static>(
         bucket: &str,
@@ -524,6 +525,7 @@ impl Object {
     /// # Ok(())
     /// # }
     /// ```
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn download_streamed(
         bucket: &str,
         file_name: &str,
@@ -865,8 +867,6 @@ impl Object {
         http_verb: &str,
         content_disposition: Option<String>,
     ) -> crate::Result<String> {
-        use openssl::sha;
-
         if duration > 604800 {
             let msg = format!(
                 "duration may not be greater than 604800, but was {}",
@@ -903,7 +903,13 @@ impl Object {
             self.get_canonical_request(&file_path, &query_string, http_verb, &canonical_headers);
 
         // 2 get hex encoded SHA256 hash the canonical request
-        let hash = sha::sha256(canonical_request.as_bytes());
+        // let hash = sha::sha256(canonical_request.as_bytes());
+        let hash = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(canonical_request.as_bytes());
+            hasher.finalize()
+        };
         let hex_hash = hex::encode(hash);
 
         // 3 construct the string to sign
@@ -1006,12 +1012,21 @@ impl Object {
 
     #[inline(always)]
     fn sign_str(message: &str) -> Result<Vec<u8>, Error> {
-        use openssl::{hash::MessageDigest, pkey::PKey, sign::Signer};
+        let key_pair =
+            ring::signature::RsaKeyPair::from_der(crate::SERVICE_ACCOUNT.private_key.as_bytes())?;
 
-        let key = PKey::private_key_from_pem(crate::SERVICE_ACCOUNT.private_key.as_bytes())?;
-        let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
-        signer.update(message.as_bytes())?;
-        Ok(signer.sign_to_vec()?)
+        // Sign the message using PKCS#1 v1.5 padding and the SHA256 digest algorithm.
+        let rng = ring::rand::SystemRandom::new();
+        let mut signature = vec![0; key_pair.public_modulus_len()];
+        key_pair
+            .sign(
+                &ring::signature::RSA_PKCS1_SHA256,
+                &rng,
+                message.as_bytes(),
+                &mut signature,
+            )
+            .unwrap();
+        Ok(signature)
     }
 }
 

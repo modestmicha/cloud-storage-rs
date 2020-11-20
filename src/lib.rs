@@ -97,8 +97,8 @@ pub use crate::resources::{
     *,
 };
 use crate::token::Token;
+use async_std::sync::Mutex;
 pub use download_options::DownloadOptions;
-use tokio::sync::Mutex;
 
 lazy_static::lazy_static! {
     /// Static `Token` struct that caches

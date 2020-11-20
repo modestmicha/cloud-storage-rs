@@ -6,7 +6,7 @@ pub enum Error {
     /// If another network error causes something to fail, this variant is used.
     Reqwest(reqwest::Error),
     /// If we encouter a SSL error, for example an invalid certificate, this variant is used.
-    Ssl(openssl::error::ErrorStack),
+    Ssl(ring::error::KeyRejected),
     /// If we have problems creating or parsing a json web token, this variant is used.
     Jwt(jsonwebtoken::errors::Error),
     /// If we cannot deserialize one of the repsonses sent by Google, this variant is used.
@@ -46,8 +46,8 @@ impl From<reqwest::Error> for Error {
     }
 }
 
-impl From<openssl::error::ErrorStack> for Error {
-    fn from(err: openssl::error::ErrorStack) -> Self {
+impl From<ring::error::KeyRejected> for Error {
+    fn from(err: ring::error::KeyRejected) -> Self {
         Self::Ssl(err)
     }
 }
